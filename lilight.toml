@@ -1,0 +1,12 @@
+default_device = "backlight/amdgpu_bl1"
+
+[transition]
+enable = true
+time = 100
+step = 17
+
+[iio]
+default_sensor = "iio:device0"
+mapping = [
+	{ in = 0, out = 10 },
+]
