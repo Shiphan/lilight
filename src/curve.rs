@@ -26,6 +26,25 @@ impl Curve {
             })
             .sum()
     }
+    pub fn apply_f(&self, point: f64) -> f64 {
+        let points = self.0.as_slice();
+        points
+            .iter()
+            .enumerate()
+            .map(|(i, point_i)| {
+                points
+                    .iter()
+                    .enumerate()
+                    .fold(point_i.y as f64, |pre, (j, point_j)| {
+                        if j == i {
+                            pre
+                        } else {
+                            pre * (point - point_j.x as f64) / (point_i.x - point_j.x) as f64
+                        }
+                    })
+            })
+            .sum()
+    }
 }
 
 #[derive(Debug, Deserialize)]

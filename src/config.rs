@@ -1,28 +1,74 @@
-use std::path::PathBuf;
+use std::{
+    borrow::Cow,
+    path::{Path, PathBuf},
+    sync::LazyLock,
+};
 
 use serde::Deserialize;
 
-use crate::curve::{Curve, CurvePoint};
+// use crate::curve::{Curve, CurvePoint};
 
-#[derive(Deserialize)]
-#[serde(default)]
+#[derive(Debug, Deserialize)]
+#[serde(default, deny_unknown_fields)]
 pub struct Config {
-    pub default_device: Option<PathBuf>,
+    pub default: Device,
     pub transition: Transition,
-    pub iio: Iio,
+    // pub iio: Iio,
+}
+
+static XDG_CONFIG_HOME: LazyLock<Cow<'static, Path>> = LazyLock::new(|| {
+    if let Some(xdg_config_home) = std::env::var_os("XDG_CONFIG_HOME") {
+        Cow::Owned(PathBuf::from(xdg_config_home))
+    } else if let Some(home) = std::env::home_dir() {
+        Cow::Owned(home.join(".config"))
+    } else {
+        Cow::Borrowed(Path::new("~/.config"))
+    }
+});
+
+pub static DEFAULT_PATH: LazyLock<PathBuf> =
+    LazyLock::new(|| XDG_CONFIG_HOME.join("lilight/lilight.toml"));
+
+impl Config {
+    pub fn load(path: &Path) -> Result<Self, String> {
+        match std::fs::read(path) {
+            Ok(x) => match toml::from_slice(&x) {
+                Ok(x) => Ok(x),
+                Err(e) => Err(format!("Failed to parse config file at `{path:?}`: {e}")),
+            },
+            Err(e) => Err(format!("Failed to read config file at `{path:?}`: {e}")),
+        }
+    }
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
-            default_device: None,
+            default: Device::default(),
             transition: Transition::default(),
-            iio: Iio::default(),
+            // iio: Iio::default(),
         }
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Device {
+    pub subsystem: String,
+    pub name: String,
+}
+
+impl Default for Device {
+    fn default() -> Self {
+        Self {
+            subsystem: "backlight".into(),
+            name: "amdgpu_bl1".into(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default, deny_unknown_fields)]
 pub struct Transition {
     pub enable: bool,
     pub time: u64,
@@ -39,7 +85,9 @@ impl Default for Transition {
     }
 }
 
-#[derive(Deserialize)]
+/*
+#[derive(Debug, Deserialize)]
+#[serde(default, deny_unknown_fields)]
 pub struct Iio {
     pub default_sensor: Option<PathBuf>,
     // TODO: maybe support for different unit (e.g. value, percentage ...)
@@ -57,3 +105,4 @@ impl Default for Iio {
         }
     }
 }
+*/

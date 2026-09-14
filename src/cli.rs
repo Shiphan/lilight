@@ -1,6 +1,7 @@
 use std::{path::PathBuf, str::FromStr};
 
 use clap::{Parser, Subcommand};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Parser)]
 #[command(version, about)]
@@ -10,47 +11,72 @@ pub struct Cli {
 
     #[arg(short, long, global = true)]
     pub config: Option<PathBuf>,
+    #[arg(long, global = true)]
+    pub default_config: bool,
+    #[cfg(feature = "daemon")]
+    #[arg(long, global = true)]
+    pub no_daemon: bool,
 }
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
     Set {
+        // TODO: explan the value format (-10%)
         #[arg(allow_hyphen_values = true)]
         value: Value,
 
-        #[arg(short, long)]
-        device: Option<PathBuf>,
-        #[arg(short, long)]
-        transition_time: Option<u64>,
         #[arg(short = 's', long)]
+        subsystem: Option<String>,
+        #[arg(short = 'n', long)]
+        name: Option<String>,
+        #[arg(short = 't', long)]
+        transition: Option<bool>,
+        #[arg(short = 'T', long)]
+        transition_time: Option<u64>,
+        #[arg(short = 'S', long)]
         transition_step: Option<u64>,
     },
     Get {
-        #[arg(short, long)]
+        #[arg(short = 's', long)]
+        subsystem: Option<String>,
+        #[arg(short = 'n', long)]
+        name: Option<String>,
+        #[arg(short = 'A', long, group = "value_type")]
+        absolute: bool,
+        #[arg(short = 'p', long, group = "value_type")]
+        percentage: bool,
+        #[arg(short = 'm', long, group = "value_type")]
         max: bool,
-        #[arg(short, long, group = "devices")]
-        device: Option<PathBuf>,
-        #[arg(short, long, group = "devices")]
+        #[arg(short = 'a', long)]
         all: bool,
     },
-    List,
+    #[cfg(feature = "daemon")]
+    Daemon,
+    /*
+    #[cfg(feature = "daemon")]
     Daemon {
-        #[arg(short, long)]
-        device: Option<PathBuf>,
-        #[arg(short, long)]
-        transition_time: Option<u64>,
         #[arg(short = 's', long)]
+        subsystem: Option<String>,
+        #[arg(short = 'n', long)]
+        name: Option<String>,
+        #[arg(short = 't', long)]
+        transition: Option<bool>,
+        #[arg(short = 'T', long)]
+        transition_time: Option<u64>,
+        #[arg(short = 'S', long)]
         transition_step: Option<u64>,
-        #[arg(short, long)]
+        #[arg(short = 'i', long)]
         iio: Option<PathBuf>,
     },
+    */
+    // Curve,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Value {
     pub prefix: Prefix,
-    pub r#type: Type,
-    pub num: i32,
+    pub kind: Kind,
+    pub num: u32,
 }
 
 impl FromStr for Value {
@@ -62,29 +88,25 @@ impl FromStr for Value {
             Some(_) => (Prefix::None, s),
             None => Err("the value is empty")?,
         };
-        let (r#type, s) = if s.ends_with("%") {
-            (Type::Percentage, &s[..s.len() - 1])
+        let (kind, s) = if s.ends_with("%") {
+            (Kind::Percentage, &s[..s.len() - 1])
         } else {
-            (Type::Number, s)
+            (Kind::Number, s)
         };
         let num = s.parse().map_err(|e| format!("parsing error: {e}"))?;
-        Ok(Self {
-            prefix,
-            r#type,
-            num,
-        })
+        Ok(Self { prefix, kind, num })
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Prefix {
     None,
     Plus,
     Minus,
 }
 
-#[derive(Clone, Debug)]
-pub enum Type {
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum Kind {
     Number,
     Percentage,
 }
