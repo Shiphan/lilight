@@ -42,6 +42,7 @@ fn main() {
             transition,
             transition_time,
             transition_step,
+            no_wait,
         } => {
             let subsystem = subsystem.unwrap_or(config.default.subsystem);
             let name = name.unwrap_or(config.default.name);
@@ -54,8 +55,19 @@ fn main() {
 
             #[cfg(feature = "daemon")]
             if !cli.no_daemon {
-                send_request_to_daemon(&daemon::Request::Set { subsystem: subsystem.clone(), name: name.clone(), value: value.clone(), transition });
+                send_request_to_daemon(
+                    &daemon::Request::Set {
+                        subsystem: subsystem.clone(),
+                        name: name.clone(),
+                        value: value.clone(),
+                        transition,
+                    },
+                    !no_wait,
+                );
                 return;
+            }
+            if no_wait {
+                eprintln!("--no-wait only take effect when using a daemon");
             }
             set_brightness(&subsystem, &name, value, transition);
         }
@@ -96,11 +108,14 @@ fn main() {
 }
 
 #[cfg(feature = "daemon")]
-fn send_request_to_daemon(
-    request: &daemon::Request,
-) {
-    let stream = std::os::unix::net::UnixStream::connect(daemon::DEFAULT_PATH.as_path()).unwrap();
-    serde_json::to_writer(stream, request).unwrap();
+fn send_request_to_daemon(request: &daemon::Request, block: bool) {
+    let mut stream =
+        std::os::unix::net::UnixStream::connect(daemon::DEFAULT_PATH.as_path()).unwrap();
+    serde_json::to_writer(&stream, request).unwrap();
+    stream.shutdown(std::net::Shutdown::Write).unwrap();
+    if block {
+        std::io::copy(&mut stream, &mut std::io::stdout()).unwrap();
+    }
 }
 
 fn print_brightness(

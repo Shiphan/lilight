@@ -35,6 +35,8 @@ pub enum Command {
         transition_time: Option<u64>,
         #[arg(short = 'S', long)]
         transition_step: Option<u64>,
+        #[arg(long)]
+        no_wait: bool,
     },
     Get {
         #[arg(short = 's', long)]

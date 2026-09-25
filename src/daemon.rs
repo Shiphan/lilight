@@ -1,5 +1,8 @@
 use std::{
-    path::{Path, PathBuf}, sync::{LazyLock, mpsc::channel},
+    io::Write,
+    os::unix::net::UnixStream,
+    path::{Path, PathBuf},
+    sync::{LazyLock, mpsc::channel},
 };
 
 use serde::{Deserialize, Serialize};
@@ -17,9 +20,8 @@ static XDG_RUNTIME_DIR: LazyLock<PathBuf> = LazyLock::new(|| {
     }
 });
 
-pub static DEFAULT_PATH: LazyLock<PathBuf> = LazyLock::new(|| {
-    XDG_RUNTIME_DIR.join("lilight/daemon.sock")
-});
+pub static DEFAULT_PATH: LazyLock<PathBuf> =
+    LazyLock::new(|| XDG_RUNTIME_DIR.join("lilight/daemon.sock"));
 
 // TODO: use async
 // TODO: a client that is not closing the socket can block daemon
@@ -47,13 +49,19 @@ pub fn daemon() {
     let _ = std::fs::remove_file(DEFAULT_PATH.as_path());
     let listener = std::os::unix::net::UnixListener::bind(DEFAULT_PATH.as_path()).unwrap();
 
-    let (tx, rx) = channel();
+    let (tx, rx) = channel::<(Request, UnixStream)>();
 
     std::thread::spawn(move || {
-        for request in rx.iter() {
+        for (request, mut stream) in rx.iter() {
             match request {
-                Request::Set { subsystem, name, value, transition } => {
+                Request::Set {
+                    subsystem,
+                    name,
+                    value,
+                    transition,
+                } => {
                     crate::set_brightness(&subsystem, &name, value, transition);
+                    let _ = stream.write_all(b"done");
                 }
             }
         }
@@ -61,14 +69,14 @@ pub fn daemon() {
 
     for stream in listener.incoming() {
         match stream {
-            Ok(mut stream) => match serde_json::from_reader::<_, Request>(&mut stream) {
+            Ok(stream) => match serde_json::from_reader::<_, Request>(&stream) {
                 Ok(request) => {
-                    tx.send(request).unwrap();
+                    tx.send((request, stream)).unwrap();
                 }
                 Err(e) => {
                     tracing::warn!(error = %e)
                 }
-            }
+            },
             Err(e) => {
                 tracing::warn!(error = %e, "connection failed");
             }
@@ -79,6 +87,9 @@ pub fn daemon() {
 #[derive(Serialize, Deserialize)]
 pub enum Request {
     Set {
-        subsystem: String, name: String, value: crate::cli::Value, transition: Option<crate::Transition>,
+        subsystem: String,
+        name: String,
+        value: crate::cli::Value,
+        transition: Option<crate::Transition>,
     },
 }
